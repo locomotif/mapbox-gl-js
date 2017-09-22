@@ -7,6 +7,7 @@ import type {SerializedBucket} from '../data/bucket';
 import type {SerializedFeatureIndex} from '../data/feature_index';
 import type {SerializedCollisionTile} from '../symbol/collision_tile';
 import type {SerializedStructArray} from '../util/struct_array';
+import type {SerializedDEMData} from '../data/dem_data';
 import type {RequestParameters} from '../util/ajax';
 import type {RGBAImage, AlphaImage} from '../util/image';
 
@@ -33,6 +34,11 @@ export type WorkerTileParameters = TileParameters & {
     overscaling: number,
 } & PlacementConfig;
 
+export type WorkerDEMTileParameters = TileParameters & {
+    coord: TileCoord,
+    rawImageData: RGBAImage
+};
+
 export type WorkerTileResult = {
     buckets: Array<SerializedBucket>,
     iconAtlasImage: RGBAImage,
@@ -44,6 +50,7 @@ export type WorkerTileResult = {
 };
 
 export type WorkerTileCallback = (error: ?Error, result: ?WorkerTileResult, transferables: ?Array<Transferable>) => void;
+export type WorkerDEMTileCallback = (err: ?Error, result: ?SerializedDEMData, transferrables: ?Array<Transferable>) => void;
 
 export type RedoPlacementParameters = TileParameters & PlacementConfig;
 
