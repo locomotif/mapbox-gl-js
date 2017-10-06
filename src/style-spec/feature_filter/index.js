@@ -43,7 +43,7 @@ function convertFilter(filter: ?Array<any>): mixed {
     if (filter.length <= 1) return (op !== 'any');
     const converted =
         op === '==' ? compileComparisonOp(filter[1], filter[2], '==') :
-        op === '!=' ? compileComparisonOp(filter[1], filter[2], '!=') :
+        op === '!=' ? compileNegation(compileComparisonOp(filter[1], filter[2], '==')) :
         op === '<' ||
         op === '>' ||
         op === '<=' ||
@@ -59,39 +59,15 @@ function convertFilter(filter: ?Array<any>): mixed {
     return converted;
 }
 
-function compilePropertyReference(property: string, type?: ?string) {
-    if (property === '$type') return ['geometry-type'];
-    const ref = property === '$id' ? ['id'] : ['get', property];
-    return type ? [type, ref] : ref;
-}
-
 function compileComparisonOp(property: string, value: any, op: string) {
-    const untypedReference = compilePropertyReference(property);
-    const typedReference = compilePropertyReference(property, typeof value);
-
-    if (value === null) {
-        const expression = [
-            '&&',
-            compileHasOp(property),
-            ['==', ['typeof', untypedReference], 'Null']
-        ];
-        return op === '!=' ? ['!', expression] : expression;
+    switch (property) {
+        case '$type':
+            return [`filter-type-${op}`, value];
+        case '$id':
+            return [`filter-id-${op}`, value];
+        default:
+            return [`filter-${op}`, property, value];
     }
-
-    const type = typeOf(value).kind;
-    if (op === '!=') {
-        return [
-            '||',
-            ['!=', ['typeof', untypedReference], type],
-            ['!=', typedReference, value]
-        ];
-    }
-
-    return [
-        '&&',
-        ['==', ['typeof', untypedReference], type],
-        [op, typedReference, value]
-    ];
 }
 
 function compileDisjunctionOp(filters: Array<Array<any>>) {
@@ -99,66 +75,25 @@ function compileDisjunctionOp(filters: Array<Array<any>>) {
 }
 
 function compileInOp(property: string, values: Array<any>) {
-    if (values.length === 0) {
-        return false;
+    switch (property) {
+        case '$type':
+            return [`filter-type-in`, ['literal', values]];
+        case '$id':
+            return [`filter-id-in`, ['literal', values]];
+        default:
+            return [values.length > 200 ? `filter-in-large` : `filter-in-small`, property, ['literal', values]];
     }
-
-    // split the input values into separate lists by type, so that
-    // we can first test the input's type and dispatch to a typed 'match'
-    // expression
-    const valuesByType = {};
-    for (const value of values) {
-        const type = typeOf(value).kind;
-        valuesByType[type] = valuesByType[type] || [];
-        valuesByType[type].push(value);
-    }
-
-    const input = compilePropertyReference(property);
-    const expression = [
-        'let',
-        'input', input
-    ];
-
-    const match = ['match', ['typeof', ['var', 'input']]];
-    for (const type in valuesByType) {
-        match.push(type);
-        if (type === 'Null') {
-            match.push(true);
-        } else {
-            match.push([
-                'match',
-                ['var', 'input'],
-                valuesByType[type],
-                true,
-                false
-            ]);
-        }
-    }
-
-    if (match.length === 4) {
-        const type = match[2];
-        expression.push([
-            '&&',
-            ['==', ['typeof', ['var', 'input']], type],
-            match[3]
-        ]);
-    } else {
-        expression.push(match);
-    }
-
-    return expression;
 }
 
 function compileHasOp(property: string) {
-    if (property === '$id') {
-        return ['!=', ['typeof', ['id']], 'Null'];
+    switch (property) {
+        case '$type':
+            return true;
+        case '$id':
+            return [`filter-has-id`];
+        default:
+            return [`filter-has`, property];
     }
-
-    if (property === '$type') {
-        return true;
-    }
-
-    return ['has', property];
 }
 
 function compileNegation(filter: mixed) {
