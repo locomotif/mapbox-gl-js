@@ -26,8 +26,7 @@ function createFilter(filter: any): FeatureFilter {
     const expression = Array.isArray(filter) ? convertFilter(filter) : filter.expression;
     const compiled = createExpression(expression, {
         context: 'filter',
-        expectedType: BooleanType,
-        defaultValue: false
+        expectedType: BooleanType
     });
 
     if (compiled.result === 'success') {
