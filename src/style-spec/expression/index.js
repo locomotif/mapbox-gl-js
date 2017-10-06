@@ -30,12 +30,6 @@ export type GlobalProperties = {
 
 export type StyleExpressionContext = 'property' | 'filter';
 
-export type StyleExpressionOptions = {
-    context: StyleExpressionContext,
-    expectedType: Type | null,
-    defaultValue?: Value | null
-}
-
 export type StyleExpressionErrors = {
     result: 'error',
     errors: Array<ParsingError>
@@ -72,6 +66,41 @@ export type StyleFilterExpression = ZoomConstantExpression | {
 
 export type StyleExpression = StyleDeclarationExpression | StyleFilterExpression;
 
+export type StylePropertySpecification = {
+    type: 'number',
+    'function': boolean,
+    'property-function': boolean,
+    default?: number
+} | {
+    type: 'string',
+    'function': boolean,
+    'property-function': boolean,
+    default?: string
+} | {
+    type: 'boolean',
+    'function': boolean,
+    'property-function': boolean,
+    default?: boolean
+} | {
+    type: 'enum',
+    'function': boolean,
+    'property-function': boolean,
+    values: {[string]: {}},
+    default?: string
+} | {
+    type: 'array',
+    'function': boolean,
+    'property-function': boolean,
+    value: 'number' | 'string' | 'boolean',
+    length?: number,
+    default?: Array<Value>
+} | {
+    type: 'color',
+    'function': boolean,
+    'property-function': boolean,
+    default?: string
+};
+
 function isExpression(expression: mixed) {
     return Array.isArray(expression) && expression.length > 0 &&
         typeof expression[0] === 'string' && expression[0] in definitions;
@@ -86,8 +115,11 @@ function isExpression(expression: mixed) {
  *
  * @private
  */
-function createExpression(expression: mixed, options: StyleExpressionOptions): StyleExpressionErrors | StyleExpression {
-    const parser = new ParsingContext(definitions, [], options.expectedType);
+function createExpression(expression: mixed,
+                          propertySpec: StylePropertySpecification,
+                          name: string,
+                          options?: {handleErrors: boolean}): StyleExpressionErrors | StyleExpression {
+    const parser = new ParsingContext(definitions, [], getExpectedType(propertySpec));
     const parsed = parser.parse(expression);
     if (!parsed) {
         assert(parser.errors.length > 0);
@@ -99,8 +131,14 @@ function createExpression(expression: mixed, options: StyleExpressionOptions): S
 
     const evaluator = new EvaluationContext();
 
+    // Special case for heatmap-color: it uses the 'default:' to define a
+    // default color ramp, but createExpression expects a simple value to fall
+    // back to in case of runtime errors
+    const defaultValue = name === 'heatmap-color' ? [0, 0, 0, 0] :
+        getDefaultValue(propertySpec);
+
     let evaluate;
-    if (options.defaultValue === undefined) {
+    if (!(options && options.handleErrors)) {
         evaluate = function (globals, feature) {
             evaluator.globals = globals;
             evaluator.feature = feature;
@@ -108,7 +146,6 @@ function createExpression(expression: mixed, options: StyleExpressionOptions): S
         };
     } else {
         const warningHistory: {[key: string]: boolean} = {};
-        const defaultValue = options.defaultValue;
         evaluate = function (globals, feature) {
             evaluator.globals = globals;
             evaluator.feature = feature;
@@ -131,18 +168,24 @@ function createExpression(expression: mixed, options: StyleExpressionOptions): S
     }
 
     const isFeatureConstant = isConstant.isFeatureConstant(parsed);
-    const isZoomConstant = isConstant.isGlobalPropertyConstant(parsed, ['zoom']);
+    if (!isFeatureConstant && !propertySpec['property-function']) {
+        return {
+            result: 'error',
+            errors: [new ParsingError('', 'property expressions not supported')]
+        };
+    }
 
+    const isZoomConstant = isConstant.isGlobalPropertyConstant(parsed, ['zoom']);
     if (isZoomConstant) {
         return {
             result: 'success',
-            context: options.context,
+            context: 'property',
             isZoomConstant: true,
             isFeatureConstant,
             evaluate,
             parsed
         };
-    } else if (options.context === 'filter') {
+    } else if (name === 'filter') {
         return {
             result: 'success',
             context: 'filter',
@@ -164,6 +207,11 @@ function createExpression(expression: mixed, options: StyleExpressionOptions): S
             result: 'error',
             errors: [new ParsingError(zoomCurve.key, zoomCurve.error)]
         };
+    } else if (zoomCurve.interpolation.name !== 'step' && propertySpec['function'] === 'piecewise-constant') {
+        return {
+            result: 'error',
+            errors: [new ParsingError(zoomCurve.key, 'interpolation type must be "step" for this property')]
+        };
     }
 
     return {
@@ -184,8 +232,6 @@ function createExpression(expression: mixed, options: StyleExpressionOptions): S
 
 module.exports.createExpression = createExpression;
 module.exports.isExpression = isExpression;
-module.exports.getExpectedType = getExpectedType;
-module.exports.getDefaultValue = getDefaultValue;
 
 // Zoom-dependent expressions may only use ["zoom"] as the input to a
 // 'top-level' "curve" expression. (The curve may be wrapped in one or more
@@ -223,29 +269,6 @@ function findZoomCurve(expression: Expression): null | Curve | {key: string, err
         return null;
     }
 }
-
-export type StylePropertySpecification = {
-    type: 'number',
-    default?: number
-} | {
-    type: 'string',
-    default?: string
-} | {
-    type: 'boolean',
-    default?: boolean
-} | {
-    type: 'enum',
-    values: {[string]: {}},
-    default?: string
-} | {
-    type: 'array',
-    value: 'number' | 'string' | 'boolean',
-    length?: number,
-    default?: Array<Value>
-} | {
-    type: 'color',
-    default?: string
-};
 
 const {
     ColorType,

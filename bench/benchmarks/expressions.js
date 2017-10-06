@@ -5,7 +5,7 @@ const accessToken = require('../lib/access_token');
 const spec = require('../../src/style-spec/reference/latest');
 const convertFunction = require('../../src/style-spec/function/convert');
 const {isFunction, createFunction} = require('../../src/style-spec/function');
-const {createExpression, getExpectedType, getDefaultValue} = require('../../src/style-spec/expression');
+const {createExpression} = require('../../src/style-spec/expression');
 
 import type {
     StyleExpression,
@@ -14,6 +14,7 @@ import type {
 
 class ExpressionBenchmark extends Benchmark {
     data: Array<{
+        propertyName: string,
         propertySpec: StylePropertySpecification,
         rawValue: mixed,
         rawExpression: mixed,
@@ -32,18 +33,15 @@ class ExpressionBenchmark extends Benchmark {
                         continue;
                     }
 
-                    const expressionData = function(rawValue, propertySpec: StylePropertySpecification) {
+                    const expressionData = function(rawValue, propertyName, propertySpec) {
                         const rawExpression = convertFunction(rawValue, propertySpec);
                         const compiledFunction = createFunction(rawValue, propertySpec);
-                        const compiledExpression = createExpression(rawExpression, {
-                            context: 'property',
-                            expectedType: getExpectedType(propertySpec),
-                            defaultValue: getDefaultValue(propertySpec)
-                        });
+                        const compiledExpression = createExpression(rawExpression, propertySpec, propertyName);
                         if (compiledExpression.result !== 'success') {
                             throw new Error(compiledExpression.errors.map(err => `${err.key}: ${err.message}`).join(', '));
                         }
                         return {
+                            propertyName,
                             propertySpec,
                             rawValue,
                             rawExpression,
@@ -54,13 +52,13 @@ class ExpressionBenchmark extends Benchmark {
 
                     for (const key in layer.paint) {
                         if (isFunction(layer.paint[key])) {
-                            this.data.push(expressionData(layer.paint[key], spec[`paint_${layer.type}`][key]));
+                            this.data.push(expressionData(layer.paint[key], key, spec[`paint_${layer.type}`][key]));
                         }
                     }
 
                     for (const key in layer.layout) {
                         if (isFunction(layer.layout[key])) {
-                            this.data.push(expressionData(layer.layout[key], spec[`layout_${layer.type}`][key]));
+                            this.data.push(expressionData(layer.layout[key], key, spec[`layout_${layer.type}`][key]));
                         }
                     }
                 }
@@ -94,12 +92,8 @@ class FunctionConvert extends ExpressionBenchmark {
 
 class ExpressionCreate extends ExpressionBenchmark {
     bench() {
-        for (const {rawExpression, propertySpec} of this.data) {
-            createExpression(rawExpression, {
-                context: 'property',
-                expectedType: getExpectedType(propertySpec),
-                defaultValue: getDefaultValue(propertySpec)
-            });
+        for (const {rawExpression, propertyName, propertySpec} of this.data) {
+            createExpression(rawExpression, propertySpec, propertyName);
         }
     }
 }
