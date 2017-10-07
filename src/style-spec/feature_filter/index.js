@@ -2,7 +2,6 @@
 
 const {createExpression} = require('../expression');
 const {BooleanType} = require('../expression/types');
-const {typeOf} = require('../expression/values');
 
 import type {GlobalProperties} from '../expression';
 export type FeatureFilter = (globalProperties: GlobalProperties, feature: VectorTileFeature) => boolean;
@@ -23,11 +22,19 @@ function createFilter(filter: any): FeatureFilter {
         return () => true;
     }
 
-    const expression = Array.isArray(filter) ? convertFilter(filter) : filter.expression;
-    const compiled = createExpression(expression, {
-        context: 'filter',
-        expectedType: BooleanType
-    });
+    let compiled;
+    if (Array.isArray(filter)) {
+        compiled = createExpression(convertFilter(filter), {
+            context: 'filter',
+            expectedType: BooleanType
+        });
+    } else {
+        compiled = createExpression(filter.expression, {
+            context: 'filter',
+            expectedType: BooleanType,
+            defaultValue: false
+        });
+    }
 
     if (compiled.result === 'success') {
         return compiled.evaluate;
@@ -75,23 +82,23 @@ function compileDisjunctionOp(filters: Array<Array<any>>) {
 
 function compileInOp(property: string, values: Array<any>) {
     switch (property) {
-        case '$type':
-            return [`filter-type-in`, ['literal', values]];
-        case '$id':
-            return [`filter-id-in`, ['literal', values]];
-        default:
-            return [values.length > 200 ? `filter-in-large` : `filter-in-small`, property, ['literal', values]];
+    case '$type':
+        return [`filter-type-in`, ['literal', values]];
+    case '$id':
+        return [`filter-id-in`, ['literal', values]];
+    default:
+        return [values.length > 200 ? `filter-in-large` : `filter-in-small`, property, ['literal', values]];
     }
 }
 
 function compileHasOp(property: string) {
     switch (property) {
-        case '$type':
-            return true;
-        case '$id':
-            return [`filter-has-id`];
-        default:
-            return [`filter-has`, property];
+    case '$type':
+        return true;
+    case '$id':
+        return [`filter-has-id`];
+    default:
+        return [`filter-has`, property];
     }
 }
 
